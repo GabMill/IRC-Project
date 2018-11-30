@@ -1,10 +1,38 @@
 var net = require('net');
 
 var HOST = '127.0.0.1';
-var PORT = 6969;
+var PORT = 8080;
 var clientArray = [];
 var roomArray = [];
 var dorelay = true;
+
+function roomRelay(msg, room) {
+  if(clientArray.length === 0) {
+    console.log("No connected clients")
+  }
+  else {
+    for(i = 0; i < roomArray.length; i++){
+      if(roomArray[i].name === room){
+        for(j = 0; j < roomArray[i].users.length; j++){
+          roomArray[i].users[j].write(msg)
+        }
+      }
+    }
+  }
+}
+
+function userRelay(msg, user) {
+  if(clientArray.length === 0) {
+    console.log("No connected clients")
+  }
+  else {
+    for(i = 0; i < clientArray.length; i++){
+      if(clientArray[i].name === user){
+        clientArray[i].write(msg);
+      }
+    }
+  }
+}
 
 function relay(msg) {
   if(clientArray.length === 0)
@@ -19,9 +47,6 @@ function relay(msg) {
   }
 }
 
-// Create a server instance, and chain the listen function to it
-// The function passed to net.createServer() becomes the event handler for the 'connection' event
-// The sock object the callback function receives UNIQUE for each connection
 net.createServer( function(socket) {
     console.log('CONNECTED: ' + socket.remoteAddress +':'+ socket.remotePort);
 
@@ -42,13 +67,8 @@ net.createServer( function(socket) {
           console.log(newRoom.name)
         }
         switch(recv[0]) {
-          //If message begins with /uname, a new client is joining.
-          //Push client to array, send a welcome message, then broadcast
-          //new user connection to all clients
           case 'uname':
-            if(!socket.name){
-              clientArray.push(socket)
-            }
+            clientArray.push(socket)
             socket.name = recv[1];
             toSend = "uname/" + socket.name;
             if (!roomArray[0]) {
@@ -60,7 +80,6 @@ net.createServer( function(socket) {
               roomArray[0].users.push(socket);
             }
             break;
-            //If message begins with msg, it is from a client. Relay to others.
           case 'msg':
             if(!socket.name)
             {
@@ -71,8 +90,8 @@ net.createServer( function(socket) {
               roomArray.push(newRoom);
               console.log(newRoom.name)
             }
-            toSend = "msg/" + socket.name + "/" + "All/" + recv[2];
-            console.log(socket.name + ": " + recv[2]);
+            toSend = "msg/" + socket.name + "/" + "All/" + recv[1];
+            console.log(socket.name + ": " + recv[1]);
             break;
           case 'list':
             dorelay = false;
@@ -93,12 +112,12 @@ net.createServer( function(socket) {
               for(i = 0; i < roomArray.length; i++){
                   if(roomArray[i].name === recv[2]){
                   for(j = 0; j < roomArray[i].users.length; j++){
-                    toSend = toSend + ":" + roomArray[i].users[j].name;
+                    toSend = toSend + roomArray[i].users[j].name + ":";
                   }
                 }
               }
             }
-            socket.write(toSend)
+            socket.write(toSend + "/" + recv[2])
             break;
           case 'new':
             var newRoom = new Room(recv[1], socket)
@@ -106,11 +125,31 @@ net.createServer( function(socket) {
             toSend = "msg/" + socket.name + "/" + "All/Created new room: " + recv[1];
             break;
           case 'join':
+            dorelay = false;
             for(i = 0; i < roomArray.length; i++){
                 if(roomArray[i].name === recv[1]){
                   roomArray[i].users.push(socket);
               }
             }
+            break;
+          case 'leave':
+            dorelay = false;
+            for(i = 0; i < roomArray.length; i++){
+              if(roomArray[i].name === recv[1]){
+                roomArray[i].users.splice(i, 1);
+              }
+            }
+            break;
+          case 'room':
+            dorelay = false;
+            toSend = "msg/" + socket.name + "/" + recv[1] + "/" + recv[2];
+            roomRelay(toSend, recv[1])
+            break;
+          case 'dm':
+            dorelay = false;
+            toSend = "msg/" + socket.name + "/dm/" + recv[2];
+            userRelay(toSend, recv[1])
+            break;
         }
       if(dorelay){
         relay(toSend);
@@ -120,14 +159,11 @@ net.createServer( function(socket) {
       }
     });
 
-    // Handles client closing connection
     socket.on('close', function(data) {
         console.log('CLOSED: ' + socket.remoteAddress +' '+ socket.remotePort);
-        //Don't want to relay messages to closed connections
         for( var i = 0; i < clientArray.length; i++){
-          console.log(socket.name);
           if ( clientArray[i] === socket) {
-            clientArray = clientArray.splice(i, 1);
+            clientArray.splice(i, 1);
           }
         }
         relay("left/" + socket.name)
