@@ -1,5 +1,4 @@
 const electron = require('electron');
-const prompt = require('electron-prompt');
 
 const net = require('net');
 
@@ -9,33 +8,46 @@ var PORT = 6969;
 
 var client = new net.Socket();
 
+
 client.connect(PORT, HOST, () => {
   //Log connection once extablished
     console.log('CONNECTED TO: ' + HOST + ':' + PORT);
-    //Prompt user for username (does not check if unique)
-        prompt({
-          title: 'Set username',
-          label: 'Username:',
-          inputAttrs: {
-            type: 'text'
-          },
-          type: 'input'
-        })
-        .then((r) => {
-          if(r === null) {
-            console.log('user cancelled');
-          } else {
-            console.log('result', r);
-            //Send username to server
-            client.write("uname/" + r)
-          }
-        })
-        .catch(console.error);
+
         var button = document.getElementById("sendButton");
         button.addEventListener("click",function(e){
-          //Sends message from text field to default room (0)
-          var msg = "msg/All/" + document.getElementById("messageField").value;
-          client.write(msg);
+          var input = document.getElementById("messageField").value
+          msg = input.split('/');
+          var toSend;
+          switch(msg[0]) {
+            case 'list':
+            //list available rooms
+              if(msg[1] === 'rooms')
+              {
+                toSend = "list/rooms"
+                break;
+              }
+              //list users in room
+              else if(msg[1] === 'users')
+              {
+                toSend = "list/users/" + msg[2];
+                break;
+              }
+              else {
+                console.log("Bad list input");
+                break;
+              }
+            case 'uname':
+              toSend = "uname/" + msg[1];
+              break;
+            case 'new':
+              toSend = input;
+              break;
+            case 'join':
+              toSend = input;
+              break;
+          }
+          console.log(toSend);
+          client.write(toSend);
           //Reset value of input field
           document.getElementById("messageField").value = '';
         },false);
@@ -50,7 +62,7 @@ client.on('data', (data) => {
         //If server sends uname, a new user has joined
         //format: opcode/username
         case 'uname':
-          console.log(newUser + " just joined the room");
+          console.log(recv[1] + " just joined the room");
           var temp = document.getElementById("thread").insertRow(-1);
           temp.innerHTML = recv[1] + " just joined!";
           break;
@@ -63,8 +75,17 @@ client.on('data', (data) => {
           temp.innerHTML = recv[1] + "(" + recv[2] + "): " + recv[3];
           break;
         case 'left':
-          var leaveMsg = recv[1].split('/', 2);
-          console.log(leaveMsg[0] + " just left " + leaveMsg[1]);
+          console.log(recv[1] + " just left");
+          break;
+        case 'list':
+          var rooms = recv[2].split(':');
+          var temp = document.getElementById("thread").insertRow(-1);
+          temp.innerHTML = "Available rooms:";
+          for(i = 0; i < rooms.length; i++)
+          {
+            var temp = document.getElementById("thread").insertRow(-1);
+            temp.innerHTML = rooms[i];
+          }
           break;
         }
 

@@ -6,4 +6,6 @@
 #compose {
   position: fixed;
   bottom: 5%;
+  right: auto;
+  left: auto;
 }
